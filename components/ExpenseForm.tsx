@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+    Alert,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 
 type ExpenseFormProps = {
   onAddExpense: (amount: number, category: string) => void;
@@ -10,9 +17,29 @@ export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
   const [category, setCategory] = useState('');
 
   const handleAddExpense = () => {
+    const trimmedCategory = category.trim();
     const parsed = parseFloat(amount);
-    if (isNaN(parsed) || parsed <= 0) return;
-    onAddExpense(parsed, category.trim());
+
+    const isAmountInvalid = isNaN(parsed) || parsed <= 0;
+    const isCategoryEmpty = trimmedCategory.length === 0;
+
+    if (isAmountInvalid && isCategoryEmpty) {
+      Alert.alert(
+        'Invalid input',
+        'Please enter a positive amount and a category.'
+      );
+      return;
+    }
+    if (isAmountInvalid) {
+      Alert.alert('Invalid amount', 'Amount must be a positive number.');
+      return;
+    }
+    if (isCategoryEmpty) {
+      Alert.alert('Invalid category', 'Category cannot be empty.');
+      return;
+    }
+
+    onAddExpense(parsed, trimmedCategory);
     setAmount('');
     setCategory('');
   };

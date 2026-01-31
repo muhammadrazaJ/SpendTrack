@@ -1,6 +1,13 @@
 import ExpenseForm from '@/components/ExpenseForm';
+import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import {
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 export type Expense = {
   id: string;
@@ -18,10 +25,14 @@ export default function HomeScreen() {
     const newExpense: Expense = {
       id: String(Date.now()),
       amount,
-      category: category.trim() || 'Uncategorized',
+      category: category.trim(),
       date: new Date().toLocaleDateString(),
     };
     setExpenses((prev) => [newExpense, ...prev]);
+  }, []);
+
+  const handleDeleteExpense = useCallback((id: string) => {
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
   }, []);
 
   return (
@@ -44,9 +55,19 @@ export default function HomeScreen() {
         }
         renderItem={({ item }) => (
           <View style={styles.expenseItem}>
-            <Text style={styles.expenseCategory}>{item.category}</Text>
-            <Text style={styles.expenseAmount}>Rs. {item.amount}</Text>
-            <Text style={styles.expenseDate}>{item.date}</Text>
+            <View style={styles.expenseContent}>
+              <Text style={styles.expenseCategory}>{item.category}</Text>
+              <Text style={styles.expenseAmount}>Rs. {item.amount}</Text>
+              <Text style={styles.expenseDate}>{item.date}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => handleDeleteExpense(item.id)}
+              activeOpacity={0.7}
+              accessibilityLabel="Delete expense"
+            >
+              <Ionicons name="trash-outline" size={24} color="#c62828" />
+            </TouchableOpacity>
           </View>
         )}
       />
@@ -90,12 +111,18 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   expenseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#fff',
     padding: 16,
     borderRadius: 10,
     marginBottom: 10,
     borderLeftWidth: 4,
     borderLeftColor: '#4CAF50',
+  },
+  expenseContent: {
+    flex: 1,
   },
   expenseCategory: {
     fontSize: 16,
@@ -112,6 +139,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 4,
+  },
+  deleteButton: {
+    padding: 10,
+    marginLeft: 8,
+    borderRadius: 8,
+    backgroundColor: '#ffebee',
   },
   emptyText: {
     fontSize: 16,
