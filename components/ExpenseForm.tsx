@@ -1,43 +1,47 @@
 import React, { useState } from 'react';
-import { View, TextInput, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-export default function ExpenseForm() {
+type ExpenseFormProps = {
+  onAddExpense: (amount: number, category: string) => void;
+};
+
+export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
 
   const handleAddExpense = () => {
-    // Button press handler (empty for now as per requirements)
-    console.log('Add Expense pressed');
+    const parsed = parseFloat(amount);
+    if (isNaN(parsed) || parsed <= 0) return;
+    onAddExpense(parsed, category.trim());
+    setAmount('');
+    setCategory('');
   };
 
   return (
     <View style={styles.formContainer}>
-      <Text style={styles.formTitle}>Add New Expense</Text>
-      
-      {/* Amount Input */}
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Amount</Text>
         <TextInput
           style={styles.input}
           placeholder="Enter amount"
+          placeholderTextColor="#999"
           keyboardType="numeric"
           value={amount}
           onChangeText={setAmount}
         />
       </View>
 
-      {/* Category Input */}
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Category</Text>
         <TextInput
           style={styles.input}
-          placeholder="Enter category (e.g., Food, Transport)"
+          placeholder="e.g. Food, Transport"
+          placeholderTextColor="#999"
           value={category}
           onChangeText={setCategory}
         />
       </View>
 
-      {/* Add Expense Button */}
       <TouchableOpacity
         style={styles.button}
         onPress={handleAddExpense}
@@ -52,22 +56,15 @@ export default function ExpenseForm() {
 const styles = StyleSheet.create({
   formContainer: {
     backgroundColor: '#fff',
+    marginHorizontal: 20,
     padding: 20,
     borderRadius: 12,
+    marginBottom: 24,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
     elevation: 3,
-  },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 20,
   },
   inputGroup: {
     marginBottom: 16,
@@ -91,7 +88,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 4,
   },
   buttonText: {
     color: '#fff',
