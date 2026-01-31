@@ -1,6 +1,8 @@
+import { Picker } from '@react-native-picker/picker';
 import React, { useState } from 'react';
 import {
     Alert,
+    Platform,
     StyleSheet,
     Text,
     TextInput,
@@ -8,40 +10,33 @@ import {
     View,
 } from 'react-native';
 
+export const EXPENSE_CATEGORIES = [
+  'Food',
+  'Transport',
+  'Bills',
+  'Entertainment',
+  'Other',
+] as const;
+
 type ExpenseFormProps = {
   onAddExpense: (amount: number, category: string) => void;
 };
 
 export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('');
+  const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0]);
 
   const handleAddExpense = () => {
-    const trimmedCategory = category.trim();
     const parsed = parseFloat(amount);
 
-    const isAmountInvalid = isNaN(parsed) || parsed <= 0;
-    const isCategoryEmpty = trimmedCategory.length === 0;
-
-    if (isAmountInvalid && isCategoryEmpty) {
-      Alert.alert(
-        'Invalid input',
-        'Please enter a positive amount and a category.'
-      );
-      return;
-    }
-    if (isAmountInvalid) {
-      Alert.alert('Invalid amount', 'Amount must be a positive number.');
-      return;
-    }
-    if (isCategoryEmpty) {
-      Alert.alert('Invalid category', 'Category cannot be empty.');
+    if (isNaN(parsed) || parsed <= 0) {
+      Alert.alert('Invalid amount', 'Please enter a positive amount.');
       return;
     }
 
-    onAddExpense(parsed, trimmedCategory);
+    onAddExpense(parsed, category);
     setAmount('');
-    setCategory('');
+    setCategory(EXPENSE_CATEGORIES[0]);
   };
 
   return (
@@ -60,13 +55,18 @@ export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Category</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. Food, Transport"
-          placeholderTextColor="#999"
-          value={category}
-          onChangeText={setCategory}
-        />
+        <View style={styles.pickerWrap}>
+          <Picker
+            selectedValue={category}
+            onValueChange={(v) => setCategory(v)}
+            style={styles.picker}
+            dropdownIconColor="#333"
+          >
+            {EXPENSE_CATEGORIES.map((cat) => (
+              <Picker.Item key={cat} label={cat} value={cat} />
+            ))}
+          </Picker>
+        </View>
       </View>
 
       <TouchableOpacity
@@ -109,6 +109,16 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     backgroundColor: '#fafafa',
+  },
+  pickerWrap: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#fafafa',
+    ...(Platform.OS === 'ios' && { height: 120 }),
+  },
+  picker: {
+    height: Platform.OS === 'android' ? 52 : 120,
   },
   button: {
     backgroundColor: '#4CAF50',
