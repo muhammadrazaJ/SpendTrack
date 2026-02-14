@@ -1,12 +1,14 @@
-// app/tabs/index.tsx (FIXED ANIMATED VERSION)
+// app/tabs/index.tsx – dark mode, calendar, monthly summary, edit
 
+import Calendar from '@/components/Calendar';
 import ExpenseForm from '@/components/ExpenseForm';
+import { EXPENSE_CATEGORIES } from '@/components/ExpenseForm';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  FlatList,
   Platform,
   StyleSheet,
   Text,
@@ -14,6 +16,9 @@ import {
   View,
   Animated,
   ScrollView,
+  Modal,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -35,9 +40,9 @@ function getMonthKeyFromDate(dateStr: string): string {
   return dateStr.slice(0, 7);
 }
 
-function getMonthOptions(expenses: Expense[]): { key: string; label: string }[] {
+function getMonthOptions(expenses: Expense[], selectedMonthKey: string): { key: string; label: string }[] {
   const currentKey = getCurrentMonthKey();
-  const keys = new Set<string>([currentKey]);
+  const keys = new Set<string>([currentKey, selectedMonthKey]);
   expenses.forEach((e) => keys.add(getMonthKeyFromDate(e.date)));
   const months = Array.from(keys).sort((a, b) => b.localeCompare(a));
   return months.map((key) => {
@@ -48,19 +53,50 @@ function getMonthOptions(expenses: Expense[]): { key: string; label: string }[] 
   });
 }
 
-// Animated Expense Item Component
-const AnimatedExpenseItem = ({ 
-  item, 
-  index, 
-  onDelete 
-}: { 
-  item: Expense; 
-  index: number; 
+function getTodayDateStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Animated Expense Item with theme and edit
+const AnimatedExpenseItem = ({
+  item,
+  index,
+  onDelete,
+  onEdit,
+  cardBg,
+  cardBorder,
+  text,
+  secondaryText,
+  mutedText,
+  danger,
+  dangerBg,
+}: {
+  item: Expense;
+  index: number;
   onDelete: (id: string) => void;
+  onEdit: (expense: Expense) => void;
+  cardBg: string;
+  cardBorder: string;
+  text: string;
+  secondaryText: string;
+  mutedText: string;
+  danger: string;
+  dangerBg: string;
 }) => {
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const slideAnim = React.useRef(new Animated.Value(50)).current;
   const scaleAnim = React.useRef(new Animated.Value(0.9)).current;
+
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      Food: '#FF6B6B',
+      Transport: '#4ECDC4',
+      Bills: '#FFE66D',
+      Entertainment: '#A8E6CF',
+      Other: '#C7CEEA',
+    };
+    return colors[category] || '#4CAF50';
+  };
 
   React.useEffect(() => {
     Animated.parallel([
@@ -107,49 +143,48 @@ const AnimatedExpenseItem = ({
     ]).start(() => onDelete(item.id));
   };
 
-  const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      Food: '#FF6B6B',
-      Transport: '#4ECDC4',
-      Bills: '#FFE66D',
-      Entertainment: '#A8E6CF',
-      Other: '#C7CEEA',
-    };
-    return colors[category] || '#4CAF50';
-  };
-
   return (
     <Animated.View
       style={[
         styles.expenseItem,
         {
+          backgroundColor: cardBg,
+          borderLeftColor: getCategoryColor(item.category),
           opacity: fadeAnim,
           transform: [
             { translateX: slideAnim },
             { scale: scaleAnim },
           ],
-          borderLeftColor: getCategoryColor(item.category),
         },
       ]}
     >
-      <View style={styles.expenseContent}>
-        <View style={styles.categoryBadge}>
-          <Text style={styles.expenseCategory}>{item.category}</Text>
-        </View>
-        <Text style={styles.expenseAmount}>Rs. {item.amount.toLocaleString()}</Text>
-        <Text style={styles.expenseDate}>{new Date(item.date).toLocaleDateString('en-GB', { 
-          day: 'numeric', 
-          month: 'short', 
-          year: 'numeric' 
-        })}</Text>
-      </View>
       <TouchableOpacity
-        style={styles.deleteButton}
+        style={styles.expenseContent}
+        onPress={() => onEdit(item)}
+        activeOpacity={0.9}
+        accessibilityLabel="Edit expense"
+      >
+        <View style={[styles.categoryBadge, { backgroundColor: cardBorder }]}>
+          <Text style={[styles.expenseCategory, { color: secondaryText }]}>{item.category}</Text>
+        </View>
+        <Text style={[styles.expenseAmount, { color: text }]}>
+          Rs. {item.amount.toLocaleString()}
+        </Text>
+        <Text style={[styles.expenseDate, { color: mutedText }]}>
+          {new Date(item.date).toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          })}
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.deleteButton, { backgroundColor: dangerBg }]}
         onPress={handleDelete}
         activeOpacity={0.7}
         accessibilityLabel="Delete expense"
       >
-        <Ionicons name="trash-outline" size={22} color="#EF5350" />
+        <Ionicons name="trash-outline" size={22} color={danger} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -157,10 +192,26 @@ const AnimatedExpenseItem = ({
 
 export default function HomeScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthKey);
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthKey());
+  const [selectedDate, setSelectedDate] = useState(getTodayDateStr);
   const [loaded, setLoaded] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editCategory, setEditCategory] = useState<string>(EXPENSE_CATEGORIES[0]);
+  const [editDate, setEditDate] = useState('');
 
-  // Animation values
+  const background = useThemeColor({}, 'background');
+  const card = useThemeColor({}, 'card');
+  const cardBorder = useThemeColor({}, 'cardBorder');
+  const text = useThemeColor({}, 'text');
+  const secondaryText = useThemeColor({}, 'secondaryText');
+  const mutedText = useThemeColor({}, 'mutedText');
+  const primary = useThemeColor({}, 'primary');
+  const danger = useThemeColor({}, 'danger');
+  const dangerBg = useThemeColor({}, 'dangerBg');
+  const inputBg = useThemeColor({}, 'inputBg');
+  const inputBorder = useThemeColor({}, 'inputBorder');
+
   const headerFadeAnim = React.useRef(new Animated.Value(0)).current;
   const headerSlideAnim = React.useRef(new Animated.Value(-30)).current;
   const totalScaleAnim = React.useRef(new Animated.Value(1)).current;
@@ -180,7 +231,6 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  // Animate header on mount
   useEffect(() => {
     if (loaded) {
       Animated.parallel([
@@ -199,7 +249,6 @@ export default function HomeScreen() {
     }
   }, [loaded]);
 
-  // Animate total when it changes
   useEffect(() => {
     Animated.sequence([
       Animated.timing(totalScaleAnim, {
@@ -221,14 +270,12 @@ export default function HomeScreen() {
     AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses)).catch(() => {});
   }, [expenses, loaded]);
 
-  const handleAddExpense = useCallback((amount: number, category: string) => {
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10);
+  const handleAddExpense = useCallback((amount: number, category: string, date: string) => {
     const newExpense: Expense = {
       id: String(Date.now()),
       amount,
       category,
-      date: dateStr,
+      date,
     };
     setExpenses((prev) => [newExpense, ...prev]);
   }, []);
@@ -237,7 +284,38 @@ export default function HomeScreen() {
     setExpenses((prev) => prev.filter((e) => e.id !== id));
   }, []);
 
-  const monthOptions = useMemo(() => getMonthOptions(expenses), [expenses]);
+  const openEdit = useCallback((expense: Expense) => {
+    setEditingExpense(expense);
+    setEditAmount(String(expense.amount));
+    setEditCategory(expense.category);
+    setEditDate(expense.date);
+  }, []);
+
+  const closeEdit = useCallback(() => {
+    setEditingExpense(null);
+  }, []);
+
+  const saveEdit = useCallback(() => {
+    if (!editingExpense) return;
+    const parsed = parseFloat(editAmount);
+    if (isNaN(parsed) || parsed <= 0) {
+      Alert.alert('Invalid amount', 'Please enter a positive amount.');
+      return;
+    }
+    setExpenses((prev) =>
+      prev.map((e) =>
+        e.id === editingExpense.id
+          ? { ...e, amount: parsed, category: editCategory, date: editDate }
+          : e
+      )
+    );
+    closeEdit();
+  }, [editingExpense, editAmount, editCategory, editDate, closeEdit]);
+
+  const monthOptions = useMemo(
+    () => getMonthOptions(expenses, selectedMonth),
+    [expenses, selectedMonth]
+  );
 
   const filteredExpenses = useMemo(
     () => expenses.filter((e) => getMonthKeyFromDate(e.date) === selectedMonth),
@@ -249,18 +327,34 @@ export default function HomeScreen() {
     [filteredExpenses]
   );
 
+  const monthlyTotals = useMemo(() => {
+    const map = new Map<string, number>();
+    expenses.forEach((e) => {
+      const key = getMonthKeyFromDate(e.date);
+      map.set(key, (map.get(key) ?? 0) + e.amount);
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, sum]) => {
+        const [y, m] = key.split('-');
+        const date = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+        const label = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+        return { key, label, total: sum };
+      });
+  }, [expenses]);
+
   if (!loaded) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.loadingText}>Loading...</Text>
+      <View style={[styles.container, { backgroundColor: background }]}>
+        <Text style={[styles.loadingText, { color: mutedText }]}>Loading...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: background }]}>
       <LinearGradient
-        colors={['#4CAF50', '#45a049']}
+        colors={[primary, '#45a049']}
         style={styles.headerGradient}
       >
         <Animated.View
@@ -276,23 +370,23 @@ export default function HomeScreen() {
           <Animated.View style={{ transform: [{ scale: totalScaleAnim }] }}>
             <Text style={styles.total}>Rs. {total.toLocaleString()}</Text>
           </Animated.View>
-          <Text style={styles.subtitle}>Total Expenses</Text>
+          <Text style={styles.subtitle}>Total for selected month</Text>
         </Animated.View>
       </LinearGradient>
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
         <View style={styles.monthSection}>
-          <Text style={styles.monthLabel}>📅 Select Month</Text>
-          <View style={styles.pickerWrap}>
+          <Text style={[styles.monthLabel, { color: text }]}>📅 Select month to view</Text>
+          <View style={[styles.pickerWrap, { backgroundColor: card, borderColor: cardBorder }]}>
             <Picker
               selectedValue={selectedMonth}
               onValueChange={(v) => setSelectedMonth(v)}
-              style={styles.picker}
-              dropdownIconColor="#4CAF50"
+              style={[styles.picker, { color: text }]}
+              dropdownIconColor={primary}
             >
               {monthOptions.map(({ key, label }) => (
                 <Picker.Item key={key} label={label} value={key} />
@@ -301,11 +395,40 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <ExpenseForm onAddExpense={handleAddExpense} />
+        <View style={[styles.summaryCard, { backgroundColor: card, borderColor: cardBorder }]}>
+          <Text style={[styles.summaryTitle, { color: text }]}>📊 Monthly expense summary</Text>
+          {monthlyTotals.length === 0 ? (
+            <Text style={[styles.summaryEmpty, { color: mutedText }]}>No expenses recorded yet</Text>
+          ) : (
+            monthlyTotals.map(({ key, label, total: monthTotal }) => (
+              <View key={key} style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: text }]}>{label}</Text>
+                <Text style={[styles.summaryValue, { color: primary }]}>
+                  Rs. {monthTotal.toLocaleString()}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
+
+        <Text style={[styles.calendarSectionLabel, { color: text }]}>
+          📅 Pick a date to add expense (any date)
+        </Text>
+        <Calendar
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          displayMonthKey={selectedMonth}
+          onMonthChange={setSelectedMonth}
+        />
+
+        <ExpenseForm
+          selectedDate={selectedDate}
+          onAddExpense={handleAddExpense}
+        />
 
         <View style={styles.listHeader}>
-          <Text style={styles.listTitle}>Recent Expenses</Text>
-          <View style={styles.countBadge}>
+          <Text style={[styles.listTitle, { color: text }]}>Recent expenses</Text>
+          <View style={[styles.countBadge, { backgroundColor: primary }]}>
             <Text style={styles.countText}>{filteredExpenses.length}</Text>
           </View>
         </View>
@@ -313,8 +436,10 @@ export default function HomeScreen() {
         {filteredExpenses.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyEmoji}>📊</Text>
-            <Text style={styles.emptyText}>No expenses yet</Text>
-            <Text style={styles.emptySubtext}>Add your first expense above</Text>
+            <Text style={[styles.emptyText, { color: mutedText }]}>No expenses this month</Text>
+            <Text style={[styles.emptySubtext, { color: mutedText }]}>
+              Add an expense above or pick another month
+            </Text>
           </View>
         ) : (
           <View style={styles.listContainer}>
@@ -324,11 +449,76 @@ export default function HomeScreen() {
                 item={item}
                 index={index}
                 onDelete={handleDeleteExpense}
+                onEdit={openEdit}
+                cardBg={card}
+                cardBorder={cardBorder}
+                text={text}
+                secondaryText={secondaryText}
+                mutedText={mutedText}
+                danger={danger}
+                dangerBg={dangerBg}
               />
             ))}
           </View>
         )}
       </ScrollView>
+
+      <Modal
+        visible={editingExpense !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={closeEdit}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: card }]}>
+            <Text style={[styles.modalTitle, { color: text }]}>Edit expense</Text>
+            <Text style={[styles.modalLabel, { color: text }]}>Amount (Rs.)</Text>
+            <TextInput
+              style={[styles.modalInput, { color: text, backgroundColor: inputBg, borderColor: inputBorder }]}
+              value={editAmount}
+              onChangeText={setEditAmount}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor={mutedText}
+            />
+            <Text style={[styles.modalLabel, { color: text }]}>Category</Text>
+            <View style={[styles.pickerWrap, { backgroundColor: inputBg, borderColor: inputBorder }]}>
+              <Picker
+                selectedValue={editCategory}
+                onValueChange={setEditCategory}
+                style={[styles.picker, { color: text }]}
+                dropdownIconColor={primary}
+              >
+                {EXPENSE_CATEGORIES.map((cat) => (
+                  <Picker.Item key={cat} label={cat} value={cat} />
+                ))}
+              </Picker>
+            </View>
+            <Text style={[styles.modalLabel, { color: text }]}>Date (YYYY-MM-DD)</Text>
+            <TextInput
+              style={[styles.modalInput, { color: text, backgroundColor: inputBg, borderColor: inputBorder }]}
+              value={editDate}
+              onChangeText={setEditDate}
+              placeholder="2025-02-14"
+              placeholderTextColor={mutedText}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel, { backgroundColor: cardBorder }]}
+                onPress={closeEdit}
+              >
+                <Text style={[styles.modalButtonText, { color: text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSave, { backgroundColor: primary }]}
+                onPress={saveEdit}
+              >
+                <Text style={styles.modalButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -336,14 +526,12 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
   },
   loadingText: {
     flex: 1,
     textAlign: 'center',
     marginTop: 48,
     fontSize: 16,
-    color: '#666',
   },
   headerGradient: {
     paddingTop: 60,
@@ -395,14 +583,11 @@ const styles = StyleSheet.create({
   monthLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#333',
     marginBottom: 10,
   },
   pickerWrap: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#E8E8E8',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -412,6 +597,44 @@ const styles = StyleSheet.create({
   },
   picker: {
     height: Platform.OS === 'android' ? 52 : 120,
+  },
+  summaryCard: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  summaryTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.3)',
+  },
+  summaryLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  summaryValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  summaryEmpty: {
+    fontSize: 14,
+    paddingVertical: 8,
+  },
+  calendarSectionLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginHorizontal: 20,
+    marginBottom: 10,
   },
   listHeader: {
     flexDirection: 'row',
@@ -424,10 +647,8 @@ const styles = StyleSheet.create({
   listTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#333',
   },
   countBadge: {
-    backgroundColor: '#4CAF50',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 4,
@@ -447,7 +668,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
     padding: 18,
     borderRadius: 16,
     marginBottom: 12,
@@ -463,7 +683,6 @@ const styles = StyleSheet.create({
   },
   categoryBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#F0F0F0',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 8,
@@ -472,26 +691,22 @@ const styles = StyleSheet.create({
   expenseCategory: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#555',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   expenseAmount: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#2E7D32',
     marginBottom: 4,
   },
   expenseDate: {
     fontSize: 13,
-    color: '#888',
     fontWeight: '500',
   },
   deleteButton: {
     padding: 12,
     marginLeft: 12,
     borderRadius: 12,
-    backgroundColor: '#FFEBEE',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -504,12 +719,56 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 18,
-    color: '#666',
     fontWeight: '600',
     marginBottom: 4,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#999',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 20,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  modalInput: {
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {},
+  modalButtonSave: {},
+  modalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

@@ -1,4 +1,4 @@
-// components/ExpenseForm.tsx (FIXED ANIMATED VERSION)
+// components/ExpenseForm.tsx – supports date selection and dark mode
 
 import { Picker } from '@react-native-picker/picker';
 import React, { useState, useRef } from 'react';
@@ -14,6 +14,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useThemeColor } from '@/hooks/use-theme-color';
 
 export const EXPENSE_CATEGORIES = [
   'Food',
@@ -24,10 +25,11 @@ export const EXPENSE_CATEGORIES = [
 ] as const;
 
 type ExpenseFormProps = {
-  onAddExpense: (amount: number, category: string) => void;
+  selectedDate: string; // YYYY-MM-DD
+  onAddExpense: (amount: number, category: string, date: string) => void;
 };
 
-export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
+export default function ExpenseForm({ selectedDate, onAddExpense }: ExpenseFormProps) {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0]);
   const [isFocused, setIsFocused] = useState(false);
@@ -99,7 +101,7 @@ export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
       ]),
     ]).start();
 
-    onAddExpense(parsed, category);
+    onAddExpense(parsed, category, selectedDate);
     setAmount('');
     setCategory(EXPENSE_CATEGORIES[0]);
     Keyboard.dismiss();
@@ -141,25 +143,33 @@ export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
     }).start();
   };
 
+  const inputBorder = useThemeColor({}, 'inputBorder');
+  const primary = useThemeColor({}, 'primary');
   const borderColor = inputBorderAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#E0E0E0', '#4CAF50'],
+    outputRange: [inputBorder, primary],
   });
+
+  const card = useThemeColor({}, 'card');
+  const cardBorder = useThemeColor({}, 'cardBorder');
+  const text = useThemeColor({}, 'text');
+  const mutedText = useThemeColor({}, 'mutedText');
+  const inputBg = useThemeColor({}, 'inputBg');
 
   return (
     <Animated.View
       style={[
         styles.formContainer,
-        { transform: [{ translateX: formShakeAnim }] },
+        { backgroundColor: card, borderColor: cardBorder, transform: [{ translateX: formShakeAnim }] },
       ]}
     >
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>💵 Amount (Rs.)</Text>
-        <Animated.View style={[styles.inputWrapper, { borderColor }]}>
+        <Text style={[styles.label, { color: text }]}>💵 Amount (Rs.)</Text>
+        <Animated.View style={[styles.inputWrapper, { borderColor, backgroundColor: inputBg }]}>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { color: text }]}
             placeholder="0.00"
-            placeholderTextColor="#B0B0B0"
+            placeholderTextColor={mutedText}
             keyboardType="numeric"
             value={amount}
             onChangeText={setAmount}
@@ -170,13 +180,13 @@ export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>🏷️ Category</Text>
-        <View style={styles.pickerWrap}>
+        <Text style={[styles.label, { color: text }]}>🏷️ Category</Text>
+        <View style={[styles.pickerWrap, { backgroundColor: inputBg, borderColor: inputBorder }]}>
           <Picker
             selectedValue={category}
             onValueChange={(v) => setCategory(v)}
-            style={styles.picker}
-            dropdownIconColor="#4CAF50"
+            style={[styles.picker, { color: text }]}
+            dropdownIconColor={primary}
           >
             {EXPENSE_CATEGORIES.map((cat) => (
               <Picker.Item key={cat} label={cat} value={cat} />
@@ -187,7 +197,7 @@ export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
 
       <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
         <TouchableOpacity
-          style={styles.button}
+          style={[styles.button, { backgroundColor: primary }]}
           onPress={handleAddExpense}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
@@ -198,6 +208,7 @@ export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
               styles.successOverlay,
               {
                 opacity: successAnim,
+                backgroundColor: primary,
                 transform: [
                   {
                     scale: successAnim.interpolate({
@@ -219,18 +230,15 @@ export default function ExpenseForm({ onAddExpense }: ExpenseFormProps) {
 
 const styles = StyleSheet.create({
   formContainer: {
-    backgroundColor: '#fff',
     marginHorizontal: 20,
     padding: 24,
     borderRadius: 20,
     marginBottom: 24,
-    shadowColor: '#4CAF50',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 6,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
   },
   inputGroup: {
     marginBottom: 20,
@@ -238,26 +246,21 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#333',
     marginBottom: 10,
   },
   inputWrapper: {
     borderWidth: 2,
     borderRadius: 12,
-    backgroundColor: '#FAFAFA',
     overflow: 'hidden',
   },
   input: {
     padding: 16,
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
   },
   pickerWrap: {
     borderWidth: 2,
-    borderColor: '#E0E0E0',
     borderRadius: 12,
-    backgroundColor: '#FAFAFA',
     overflow: 'hidden',
     ...(Platform.OS === 'ios' && { height: 120 }),
   },
@@ -265,14 +268,12 @@ const styles = StyleSheet.create({
     height: Platform.OS === 'android' ? 52 : 120,
   },
   button: {
-    backgroundColor: '#4CAF50',
     padding: 18,
     borderRadius: 14,
     alignItems: 'center',
     marginTop: 4,
     flexDirection: 'row',
     justifyContent: 'center',
-    shadowColor: '#4CAF50',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -283,7 +284,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: '100%',
     height: '100%',
-    backgroundColor: '#66BB6A',
     borderRadius: 14,
   },
   buttonIcon: {
